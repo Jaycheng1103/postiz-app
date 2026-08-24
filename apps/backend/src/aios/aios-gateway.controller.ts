@@ -39,7 +39,7 @@ export class AiosGatewayController {
     @Body()
     body: {
       aiosAccountId: string;
-      provider: 'youtube';
+      provider: 'youtube' | 'instagram';
       aiosConnectionIntentId: string;
       browserReturnUrl: string;
       completionWebhookUrl: string;

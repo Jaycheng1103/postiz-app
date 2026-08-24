@@ -9,7 +9,11 @@ import { ioRedis } from '@gitroom/nestjs-libraries/redis/redis.service';
 import { getSsrfSafeDispatcher } from '@gitroom/nestjs-libraries/dtos/webhooks/ssrf.safe.dispatcher';
 
 const AIOS_YOUTUBE_SCOPES = ['youtube.readonly', 'yt-analytics.readonly'];
-const METRIC_KEYS: Record<string, string> = {
+const AIOS_INSTAGRAM_SCOPES = [
+  'instagram_business_basic',
+  'instagram_business_manage_insights',
+];
+const YOUTUBE_METRIC_KEYS: Record<string, string> = {
   Views: 'views',
   'Estimated Minutes Watched': 'estimatedMinutesWatched',
   'Average View Duration': 'averageViewDuration',
@@ -17,6 +21,27 @@ const METRIC_KEYS: Record<string, string> = {
   'Subscribers Gained': 'subscribersGained',
   'Subscribers Lost': 'subscribersLost',
   Likes: 'likes',
+};
+const INSTAGRAM_METRIC_KEYS: Record<string, string> = {
+  'Follower Count': 'followerCount',
+  Reach: 'reach',
+  Views: 'views',
+  Likes: 'likes',
+  Comments: 'comments',
+  Shares: 'shares',
+  Saves: 'saves',
+  Replies: 'replies',
+};
+
+type AiosSocialProvider = 'youtube' | 'instagram';
+
+const providerIdentifier = (provider: AiosSocialProvider) =>
+  provider === 'youtube' ? 'youtube' : 'instagram-standalone';
+
+const aiosProvider = (identifier: string): AiosSocialProvider | null => {
+  if (identifier === 'youtube') return 'youtube';
+  if (identifier === 'instagram-standalone') return 'instagram';
+  return null;
 };
 
 type AiosAnalyticsMetric = {
@@ -50,25 +75,25 @@ export class AiosGatewayService {
   async createConnectIntent(input: {
     aiosAccountId: string;
     organizationId: string;
-    provider: 'youtube';
+    provider: AiosSocialProvider;
     aiosConnectionIntentId: string;
     browserReturnUrl: string;
     completionWebhookUrl: string;
   }) {
     await this.assertOrganization(input.aiosAccountId, input.organizationId);
-    if (input.provider !== 'youtube') {
-      throw new HttpException('Unsupported AIOS social provider', 400);
-    }
-
-    const browserReturnUrl = this.assertAiosUrl(input.browserReturnUrl, [
-      '/home/youtube',
-      '/home/flywheel',
-    ]);
+    const browserReturnUrl = this.assertAiosUrl(
+      input.browserReturnUrl,
+      input.provider === 'youtube'
+        ? ['/home/youtube', '/home/flywheel']
+        : ['/home/instagram', '/home/flywheel']
+    );
     const completionWebhookUrl = this.assertAiosUrl(
       input.completionWebhookUrl,
-      ['/api/aios/integrations/youtube/callback']
+      [`/api/aios/integrations/${input.provider}/callback`]
     );
-    const provider = this.integrationManager.getSocialIntegration('youtube');
+    const provider = this.integrationManager.getSocialIntegration(
+      providerIdentifier(input.provider)
+    );
     const { codeVerifier, state, url } = await provider.generateAuthUrl();
     const ttlSeconds = 3600;
 
@@ -120,13 +145,16 @@ export class AiosGatewayService {
       intentId: string;
       aiosAccountId: string;
       organizationId: string;
-      provider: 'youtube';
+      provider: AiosSocialProvider;
     };
     const integration = await this.integrations.getIntegrationById(
       intent.organizationId,
       integrationId
     );
-    if (!integration || integration.providerIdentifier !== intent.provider) {
+    if (
+      !integration ||
+      integration.providerIdentifier !== providerIdentifier(intent.provider)
+    ) {
       throw new HttpException('AIOS OAuth integration mismatch', 409);
     }
     if (integration.inBetweenSteps) return 'deferred';
@@ -177,18 +205,24 @@ export class AiosGatewayService {
     return (await this.integrations.getIntegrationsList(organizationId))
       .filter(
         (integration) =>
-          integration.providerIdentifier === 'youtube' &&
+          aiosProvider(integration.providerIdentifier) !== null &&
           !integration.inBetweenSteps
       )
-      .map((integration) => ({
-        id: integration.id,
-        provider: 'youtube' as const,
-        externalAccountId: integration.internalId,
-        name: integration.name,
-        ...(integration.picture ? { pictureUrl: integration.picture } : {}),
-        disabled: integration.disabled,
-        scopes: AIOS_YOUTUBE_SCOPES,
-      }));
+      .map((integration) => {
+        const provider = aiosProvider(integration.providerIdentifier)!;
+        return {
+          id: integration.id,
+          provider,
+          externalAccountId: integration.internalId,
+          name: integration.name,
+          ...(integration.picture ? { pictureUrl: integration.picture } : {}),
+          disabled: integration.disabled,
+          scopes:
+            provider === 'youtube'
+              ? AIOS_YOUTUBE_SCOPES
+              : AIOS_INSTAGRAM_SCOPES,
+        };
+      });
   }
 
   async getAnalytics(input: {
@@ -202,8 +236,25 @@ export class AiosGatewayService {
       input.aiosAccountId,
       input.organizationId
     );
-    if (input.provider !== 'youtube' || ![7, 30, 90].includes(input.period)) {
+    if (
+      !['youtube', 'instagram'].includes(input.provider) ||
+      ![7, 30, 90].includes(input.period)
+    ) {
       throw new HttpException('Unsupported analytics request', 400);
+    }
+
+    const provider = input.provider as AiosSocialProvider;
+    const metricKeys =
+      provider === 'youtube' ? YOUTUBE_METRIC_KEYS : INSTAGRAM_METRIC_KEYS;
+    const integration = await this.integrations.getIntegrationById(
+      organization.id,
+      input.integrationId
+    );
+    if (
+      !integration ||
+      integration.providerIdentifier !== providerIdentifier(provider)
+    ) {
+      throw new HttpException('AIOS analytics integration mismatch', 409);
     }
 
     const analytics = await this.integrations.checkAnalytics(
@@ -217,7 +268,7 @@ export class AiosGatewayService {
       now.getTime() - input.period * 24 * 60 * 60 * 1000
     ).toISOString();
     const metrics = analytics.flatMap<AiosAnalyticsMetric>((series) => {
-      const sourceMetricKey = METRIC_KEYS[series.label];
+      const sourceMetricKey = metricKeys[series.label];
       if (!sourceMetricKey) return [];
       const rows = series.data ?? [];
 
@@ -257,8 +308,11 @@ export class AiosGatewayService {
     return {
       schemaVersion: 1 as const,
       requestId: randomUUID(),
-      adapterKey: 'youtube' as const,
-      provider: 'youtube' as const,
+      adapterKey:
+        provider === 'youtube'
+          ? ('youtube' as const)
+          : ('instagram-standalone' as const),
+      provider,
       dataThrough: periodEnd,
       metrics,
     };

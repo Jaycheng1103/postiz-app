@@ -28,12 +28,15 @@ export class InstagramStandaloneProvider
   name = 'Instagram\n(Standalone)';
   isBetweenSteps = false;
   refreshCron = true;
-  scopes = [
-    'instagram_business_basic',
-    'instagram_business_content_publish',
-    'instagram_business_manage_comments',
-    'instagram_business_manage_insights',
-  ];
+  scopes =
+    process.env.AIOS_INSTAGRAM_READ_ONLY === 'true'
+      ? ['instagram_business_basic', 'instagram_business_manage_insights']
+      : [
+          'instagram_business_basic',
+          'instagram_business_content_publish',
+          'instagram_business_manage_comments',
+          'instagram_business_manage_insights',
+        ];
     override maxConcurrentJob = 200; // Instagram standalone has stricter limits
   dto = InstagramDto;
 

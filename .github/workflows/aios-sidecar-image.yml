@@ -24,7 +24,7 @@ jobs:
           file: Dockerfile.dev
           platforms: linux/amd64
           push: true
-          tags: ghcr.io/${{ github.repository_owner }}/postiz-app:aios-sidecar
+          tags: ghcr.io/jaycheng1103/postiz-app:aios-sidecar
           build-args: NEXT_PUBLIC_VERSION=aios-sidecar
           provenance: false
           sbom: false

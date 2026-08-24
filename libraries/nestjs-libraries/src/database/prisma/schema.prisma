@@ -10,6 +10,7 @@ datasource db {
 
 model Organization {
   id                  String               @id @default(uuid())
+  aiosAccountId       String?              @unique
   name                String
   description         String?
   apiKey              String?

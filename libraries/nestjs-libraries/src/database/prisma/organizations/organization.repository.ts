@@ -70,6 +70,29 @@ export class OrganizationRepository {
     });
   }
 
+  getOrgByAiosAccountId(aiosAccountId: string) {
+    return this._organization.model.organization.findUnique({
+      where: { aiosAccountId },
+    });
+  }
+
+  createAiosOrganization(aiosAccountId: string, name: string) {
+    return this._organization.model.organization.upsert({
+      where: { aiosAccountId },
+      create: {
+        aiosAccountId,
+        name,
+        apiKey: AuthService.fixedEncryption(makeId(20)),
+        allowTrial: false,
+        isTrailing: false,
+      },
+      update: {
+        name,
+        deletedAt: null,
+      },
+    });
+  }
+
   getCount() {
     return this._organization.model.organization.count();
   }

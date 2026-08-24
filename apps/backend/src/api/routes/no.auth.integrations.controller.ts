@@ -24,6 +24,7 @@ import {
 import { RefreshIntegrationService } from '@gitroom/nestjs-libraries/integrations/refresh.integration.service';
 import { OrganizationService } from '@gitroom/nestjs-libraries/database/prisma/organizations/organization.service';
 import { getSsrfSafeDispatcher } from '@gitroom/nestjs-libraries/dtos/webhooks/ssrf.safe.dispatcher';
+import { AiosGatewayService } from '@gitroom/backend/aios/aios-gateway.service';
 
 @ApiTags('Integrations')
 @Controller('/integrations')
@@ -32,7 +33,8 @@ export class NoAuthIntegrationsController {
     private _integrationManager: IntegrationManager,
     private _integrationService: IntegrationService,
     private _refreshIntegrationService: RefreshIntegrationService,
-    private _organizationService: OrganizationService
+    private _organizationService: OrganizationService,
+    private _aiosGatewayService: AiosGatewayService
   ) {}
 
   @Get('/')
@@ -285,8 +287,12 @@ export class NoAuthIntegrationsController {
       }
     }
 
+    const aiosCompletion = await this._aiosGatewayService.notifyOauthCompletion(
+      body.state,
+      createUpdate.id
+    );
     const webhookUrl = await ioRedis.get(`webhookUrl:${body.state}`);
-    if (webhookUrl) {
+    if (aiosCompletion === 'not-aios' && webhookUrl) {
       try {
         await fetch(webhookUrl, {
           method: 'POST',
@@ -350,7 +356,13 @@ export class NoAuthIntegrationsController {
 
     const org = await this._organizationService.getOrgById(organization);
 
-    return this._integrationService.saveProviderPage(org.id, id, body);
+    const result = await this._integrationService.saveProviderPage(
+      org.id,
+      id,
+      body
+    );
+    await this._aiosGatewayService.notifyOauthCompletion(body.state, id);
+    return result;
   }
 
   @Post('/extension-refresh')

@@ -55,6 +55,21 @@ export class OrganizationService {
     return this._organizationRepository.getOrgByApiKey(api);
   }
 
+  getOrgByAiosAccountId(aiosAccountId: string) {
+    return this._organizationRepository.getOrgByAiosAccountId(aiosAccountId);
+  }
+
+  createAiosOrganization(aiosAccountId: string, name: string) {
+    return this._organizationRepository.createAiosOrganization(
+      aiosAccountId,
+      name
+    );
+  }
+
+  deleteAiosOrganization(organizationId: string) {
+    return this._organizationRepository.deleteOrganization(organizationId);
+  }
+
   async hasSuperAdminUser(orgId: string) {
     return !!(await this._organizationRepository.getSuperAdminUser(orgId));
   }

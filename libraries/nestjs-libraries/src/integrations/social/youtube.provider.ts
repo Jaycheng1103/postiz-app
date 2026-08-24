@@ -61,11 +61,7 @@ export class YoutubeProvider extends SocialAbstract implements SocialProvider {
   scopes = [
     'https://www.googleapis.com/auth/userinfo.profile',
     'https://www.googleapis.com/auth/userinfo.email',
-    'https://www.googleapis.com/auth/youtube',
-    'https://www.googleapis.com/auth/youtube.force-ssl',
     'https://www.googleapis.com/auth/youtube.readonly',
-    'https://www.googleapis.com/auth/youtube.upload',
-    'https://www.googleapis.com/auth/youtubepartner',
     'https://www.googleapis.com/auth/yt-analytics.readonly',
   ];
 
@@ -904,6 +900,14 @@ export class YoutubeProvider extends SocialAbstract implements SocialProvider {
       });
 
       const acc = [] as any[];
+      acc.push({
+        label: 'Views',
+        data: mappedData?.map((p: any) => ({
+          total: p.views,
+          date: p.day,
+        })),
+      });
+
       acc.push({
         label: 'Estimated Minutes Watched',
         data: mappedData?.map((p: any) => ({
